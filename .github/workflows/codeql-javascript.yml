@@ -1,0 +1,65 @@
+name: "CodeQL (JavaScript)"
+
+# Scans the vendored rough.js that the Swift engine loads into JavaScriptCore. The file is minified
+# onto line 2 (line 1 is empty), so alerts point at line 2 with a column offset.
+# Merged code is scanned on push to development, and the weekly run picks up new CodeQL queries for
+# code nobody has changed. The only pull_request trigger is for changes to this workflow, so a
+# Dependabot codeql-action bump that breaks the minified-file extractor setting below fails on the PR.
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "development" ]
+    paths:
+      - "Sources/RoughSwift/Resources/**"
+      - ".github/workflows/codeql-javascript.yml"
+  pull_request:
+    branches: [ "development" ]
+    paths:
+      - ".github/workflows/codeql-javascript.yml"
+  schedule:
+    - cron: '17 4 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Queue rather than cancel, so every merge to development gets its own analysis.
+  cancel-in-progress: false
+
+jobs:
+  codeql-javascript:
+    name: Analyze (javascript)
+    if: github.event_name != 'workflow_dispatch' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    env:
+      # The JavaScript extractor skips minified files ("File appears to be minified"), which leaves
+      # nothing to analyse and fails the run. This (undocumented) extractor setting turns that off.
+      # If a codeql-action bump drops it, analyze fails with no JavaScript extracted; the
+      # pull_request trigger above surfaces that on the Dependabot PR.
+      CODEQL_EXTRACTOR_JAVASCRIPT_ALLOW_MINIFIED_FILES: "true"
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          # rough.js is the only JavaScript in the repo; keep the scan to it.
+          config: |
+            paths:
+              - Sources/RoughSwift/Resources
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: "/language:javascript-typescript"
