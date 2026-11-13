@@ -1,0 +1,47 @@
+name: "CodeQL (Actions)"
+
+# No pull_request trigger, to save CI time: merged code is scanned on push to development, and the
+# weekly run picks up new CodeQL queries for code nobody has changed. PRs get no CodeQL check.
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "development" ]
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+  schedule:
+    - cron: '47 3 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Queue rather than cancel, so every merge to development gets its own analysis.
+  cancel-in-progress: false
+
+jobs:
+  codeql-actions:
+    name: Analyze (actions)
+    if: github.event_name != 'workflow_dispatch' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: actions
+          build-mode: none
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: "/language:actions"

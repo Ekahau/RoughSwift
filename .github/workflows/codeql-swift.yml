@@ -1,0 +1,74 @@
+name: "CodeQL (Swift)"
+
+# No pull_request trigger, to save CI time: merged code is scanned on push to development, and the
+# weekly run picks up new CodeQL queries for code nobody has changed. PRs get no CodeQL check.
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "development" ]
+    paths:
+      - "Sources/**"
+      # rough.js is scanned by codeql-javascript.yml; do not start a macOS build for it.
+      - "!Sources/RoughSwift/Resources/**"
+      - "Package.swift"
+      # The build uses the shared RoughSwift scheme committed here.
+      - ".swiftpm/**"
+      - ".github/workflows/codeql-swift.yml"
+  schedule:
+    # Offset from the org's other weekly Swift scans so they do not queue for macOS runners together.
+    - cron: '45 4 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Queue rather than cancel, so every merge to development gets its own analysis.
+  cancel-in-progress: false
+
+jobs:
+  codeql-swift:
+    name: Analyze (swift)
+    if: github.event_name != 'workflow_dispatch' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    # https://github.com/actions/runner-images?tab=readme-ov-file#available-images
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      # Pin Xcode so a runner-image default bump cannot move the Swift compiler past what the CodeQL
+      # Swift extractor supports. Update together with codeql-action bumps.
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      # The package has no dependencies, so there is no SPM resolve step before CodeQL init.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: swift
+          build-mode: manual
+
+      # Builds the RoughSwift library target the same way SPM consumers do. The bundled
+      # Resources/rough.js is scanned separately by codeql-javascript.yml.
+      - name: Build
+        run: |
+          xcodebuild \
+            -scheme RoughSwift \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ./build-output \
+            ARCHS="arm64" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: "/language:swift"

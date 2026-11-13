@@ -1,0 +1,17 @@
+# https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci(dependabot)"
+    # init and analyze must stay on the same version.
+    groups:
+      codeql-actions:
+        patterns:
+          # Dependabot names the dependency "github/codeql-action" (no subpath), so match on
+          # that prefix rather than "github/codeql-action/*".
+          - "github/codeql-action*"
